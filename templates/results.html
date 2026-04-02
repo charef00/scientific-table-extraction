@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scopus Results</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .result-info {
+            margin-bottom: 15px;
+        }
+        .search-query {
+            font-style: italic;
+        }
+        .export-btn {
+            margin-right: 10px;
+        }
+        .no-results {
+            text-align: center;
+            padding: 30px 0;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body class="bg-light">
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Search Results</h3>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> New Search
+        </a>
+    </div>
+
+    <div class="result-info">
+        <p>Year : {{ year_from }} to {{year_to}}</p>
+        <p>Searching for: <span class="search-query fw-bold">{{ query }}</span></p>
+        <p id="result-count"></p>
+    </div>
+
+    <div class="mb-3">
+        <button class="btn btn-sm btn-outline-success export-btn" onclick="exportSelected()">
+            Export Selected
+        </button>
+        <button class="btn btn-sm btn-outline-success" onclick="Traitement()" style="position: fixed;bottom: 30px;z-index: 100;right: 30px;background-color: #198754;color:white;">
+            Next
+        </button>
+    </div>
+
+    <div id="results-container"></div>
+    <div id="no-results" class="no-results" style="display: none;">
+        <p>No results found for your search. Please try different keywords.</p>
+    </div>
+
+    <div class="loading-spinner">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p>Loading more results...</p>
+    </div>
+
+    <div class="d-grid mt-4">
+        <button id="loadMoreBtn" class="btn btn-outline-primary btn-lg">
+            Show more
+        </button>
+    </div>
+</div>
+
+<script>
+let start = 0;
+const count = 20;
+const keywords = "{{ query }}";
+const year_from="{{year_from}}";
+const year_to="{{year_to}}";
+const fieldType = "{{ field_type or 0 }}";  // Default to 0 if not provided
+let totalResults = 0;
+
+document.getElementById("loadMoreBtn").addEventListener("click", loadMore);
+
+// Auto-load first 20
+loadMore();
+
+function loadMore() {
+    document.querySelector('.loading-spinner').style.display = 'block';
+    
+    fetch("/load_more", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            keywords: keywords,
+            year_from:year_from,
+            year_to:year_to,
+            field_type: fieldType,
+            start: start
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        document.querySelector('.loading-spinner').style.display = 'none';
+        
+        if (data.error) {
+            showError(data.error);
+            return;
+        }
+        
+        totalResults = data.totalResults || 0;
+        updateResultCount();
+        
+        if (data.entries && data.entries.length > 0) {
+            appendArticles(data.entries);
+            start += count;
+            
+            if (start >= totalResults) {
+                document.getElementById("loadMoreBtn").style.display = "none";
+            }
+        } else if (start === 0) {
+            // No results at all
+            document.getElementById("results-container").style.display = "none";
+            document.getElementById("no-results").style.display = "block";
+            document.getElementById("loadMoreBtn").style.display = "none";
+        }
+    })
+    .catch(error => {
+        document.querySelector('.loading-spinner').style.display = 'none';
+        showError('Error loading results: ' + error.message);
+    });
+}
+
+function updateResultCount() {
+    const countElement = document.getElementById('result-count');
+    const currentCount = Math.min(start + count, totalResults);
+    countElement.textContent = `Showing ${currentCount} of ${totalResults} results`;
+}
+
+function appendArticles(articles) {
+    const container = document.getElementById("results-container");
+    
+    if (start === 0) {
+        container.innerHTML = ''; // Clear previous results on first load
+    }
+
+    // Batch wrapper
+    const batchDiv = document.createElement("div");
+    batchDiv.className = "batch mb-4";
+
+    // Select All button for THIS batch
+    const selectAllBtn = document.createElement("button");
+    selectAllBtn.className = "btn btn-sm btn-outline-success mb-2";
+
+    selectAllBtn.innerText = "Select ("+start+")";
+
+    let selected = false;
+    let num=start;
+    selectAllBtn.onclick = () => {
+        const checkboxes = batchDiv.querySelectorAll(".select_" + num);
+
+        selected = !selected;
+
+        checkboxes.forEach(cb => cb.checked = selected);
+
+        selectAllBtn.innerText = selected
+            ? "Deselect ("+num+")"
+            : "Select ("+num+")";
+    };
+
+    batchDiv.appendChild(selectAllBtn);
+
+    // Articles
+    articles.forEach(article => {
+        const card = document.createElement("div");
+        card.className = "card mb-3 shadow-sm";
+
+        card.innerHTML = `
+            <div class="card-body">
+                <div class="form-check float-end">
+                    <input class="form-check-input paper-checkbox select_${start}" type="checkbox"
+                           value="${article.doi || ''}"
+                           data-title="${article.title || ''}">
+                </div>
+
+                <h5>${article.title || "No title available"}</h5>
+
+                ${article.doi ? `
+                <p>
+                    <span class="badge bg-secondary">DOI</span>
+                    <a href="https://doi.org/${article.doi}" target="_blank">
+                        ${article.doi}
+                    </a>
+                </p>` : ""}
+                <p> Year : ${article.coverDate} </p>
+                <p>
+                    ${article.abstract
+                        ? article.abstract.substring(0, 300) + "..."
+                        : "No abstract available."}
+                </p>
+
+                ${article.publicationName ? `
+                <p>
+                    <span class="badge bg-info">Journal</span>
+                    ${article.publicationName}
+                </p>` : ""}
+            </div>
+        `;
+
+        batchDiv.appendChild(card);
+    });
+
+    container.appendChild(batchDiv);
+    
+}
+
+function exportSelected() {
+    const selected = [];
+    document.querySelectorAll(".paper-checkbox:checked").forEach(cb => {
+        selected.push({
+            doi: cb.value,
+            title: cb.getAttribute('data-title')
+        });
+    });
+    
+    if (selected.length === 0) {
+        alert('Please select at least one article to export.');
+        return;
+    }
+    
+    // Create a blob with the selected articles data
+    const dataStr = JSON.stringify(selected, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = 'selected_articles.json';
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+}
+
+function Traitement() {
+    const selectedDois = [];
+    document.querySelectorAll(".paper-checkbox:checked").forEach(cb => {
+        if (cb.value) {
+            selectedDois.push(cb.value);
+        }
+    });
+    
+    if (selectedDois.length === 0) {
+        alert('Please select at least one article to process.');
+        return;
+    }
+    
+    // Create a form to submit the selected DOIs
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/start_processing';
+    
+    // Add selected DOIs to the form
+    selectedDois.forEach(doi => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'selected_dois';
+        input.value = doi;
+        form.appendChild(input);
+    });
+    
+    // Submit the form
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function showError(message) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'alert alert-danger';
+    errorDiv.textContent = message;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(errorDiv, container.firstChild);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        errorDiv.remove();
+    }, 5000);
+}
+</script>
+</body>
+</html>

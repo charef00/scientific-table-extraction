@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Processing Tables</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f6fa;
+            padding: 40px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            background: #ddd;
+            border-radius: 20px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress {
+            height: 20px;
+            background: #4caf50;
+            width: {{ progress }}%;
+            transition: width 0.5s;
+        }
+
+        .info {
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            background: #3498db;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Processing Tables (OCR)</h2>
+
+    <div class="info">
+        <strong>Current image:</strong> {{ current_image }}
+    </div>
+
+    <div class="info">
+        {{ processed }} / {{ total }} processed
+    </div>
+
+    <div class="progress-bar">
+        <div class="progress"></div>
+    </div>
+
+</div>
+<script>
+    window.location.href = "{{ url_for('run_ocr') }}";
+</script>
+
+</body>
+</html>
